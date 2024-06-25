@@ -455,15 +455,16 @@ class InternalScanSensor extends Sensor {
   }
 
   _getLatestNumTaskKeys(tasks, maxNum) {
-    return Object.entries(tasks).sort((a,b) => {return (a[1].ts || 0) - (b[1].ts || 0)}).splice(Object.keys(tasks).length-maxNum, maxNum).map(i=>i[0]);
+    return Object.entries(tasks).filter( i => !i[0].startsWith('new_device:')).sort((a,b) => {return (a[1].ts || 0) - (b[1].ts || 0)}).splice(Object.keys(tasks).length-maxNum, maxNum).map(i=>i[0]);
   }
 
   async _cleanTasks(maxNum=10) {
     await lock.acquire(LOCK_TASK_QUEUE, async () => {
       let deleted = false;
-      const len = Object.keys(this.scheduledScanTasks).length;
+      const tasks = this._getTasks();
+      const len = Object.keys(tasks).length;
       if ( len > maxNum) { // only keep recent maxNum results
-        const keys = Object.entries(this.scheduledScanTasks).filter(item => item[1].state != STATE_SCANNING && item[1].state != STATE_QUEUED).sort((a,b) => {return (a[1].ts || 0) - (b[1].ts || 0)}).splice(0,len-maxNum).map(i=>i[0]);
+        const keys = Object.entries(tasks).filter(item => item[1].state != STATE_SCANNING && item[1].state != STATE_QUEUED).sort((a,b) => {return (a[1].ts || 0) - (b[1].ts || 0)}).splice(0,len-maxNum).map(i=>i[0]);
         for (const key of keys) {
           log.debug("delete scan task", key);
           delete this.scheduledScanTasks[key];
@@ -486,6 +487,10 @@ class InternalScanSensor extends Sensor {
 
   getTasks() {
     return this.scheduledScanTasks;
+  }
+
+  _getTasks() {
+    return Object.keys(this.scheduledScanTasks).reduce( (obj, k) => { if (!k.startsWith('new_device:')) obj[k] = this.scheduleTask[k]; return obj}, {} );
   }
 
   async saveToRedis(hostId, result) {
@@ -519,7 +524,9 @@ class InternalScanSensor extends Sensor {
       result.tasks = JSON.parse(result.tasks);
     if (_.has(result, "lastCompletedScanTs"))
       result.lastCompletedScanTs = Number(result.lastCompletedScanTs);
-
+    if (result.tasks) {
+      result.tasks = Object.keys(result.tasks).filter(i => !i.startsWith('new_device:')).reduce((obj, key) => {obj[key] = result.tasks[key]; return obj}, {});
+    }
     if (latestNum > 0 && result.tasks && Object.keys(result.tasks).length > 0) {
       const lastTasks = this.getLatestNumTasks(result.tasks, latestNum);
       if (Object.keys(lastTasks).length > 0) {
