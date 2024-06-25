@@ -947,7 +947,7 @@
     "ipv6": false,
     "adblock": false,
     "family_protect": false,
-    "internal_scan": true,
+    "weak_password_scan": false,
     "acl_audit": true,
     "acl_alarm": true,
     "new_device_tag": false,

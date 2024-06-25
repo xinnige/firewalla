@@ -677,6 +677,7 @@ module.exports = class HostManager extends Monitorable {
     if (_.has(result, "lastCompletedScanTs"))
       result.lastCompletedScanTs = Number(result.lastCompletedScanTs);
     if (result.tasks) {
+      result.tasks = Object.keys(result.tasks).filter(i => !i.startsWith('new_device:')).reduce((obj, key) => {obj[key] = result.tasks[key]; return obj}, {});
       const latestKeys = Object.entries(result.tasks).sort((a,b) => {return (a[1].ts || 0) - (b[1].ts || 0)}).splice(Object.keys(result.tasks).length-1, 1).map(i=>i[0]);
       if (latestKeys.length > 0) {
         const latestTasks = {};

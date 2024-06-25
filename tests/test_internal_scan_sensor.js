@@ -30,9 +30,11 @@ const npm = require('../net2/NetworkProfileManager.js');
 const sysManager = require('../net2/SysManager.js');
 const Tag = require('../net2/Tag.js');
 const tagManager = require('../net2/TagManager.js');
+const sem = require('../sensor/SensorEventManager.js').getInstance();
 const InternalScanSensor = require('../sensor/InternalScanSensor.js');
 const rclient = require('../util/redis_manager.js').getRedisClient();
 const fc = require('../net2/config.js');
+const Constants = require('../net2/Constants.js');
 
 const policyKeyName = 'weak_password_scan';
 
@@ -371,6 +373,7 @@ describe('Test applyPolicy', function(){
       this.hm.hosts.all.push(this.hm.hostsdb['host:mac:20:6D:31:01:2B:88']);
       this.hm.hosts.all.push(this.hm.hostsdb['host:mac:20:6D:31:01:2B:89']);
       this.policy = await rclient.hgetAsync('policy:system', 'weak_password_scan');
+      this.result = await rclient.hgetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks');
       done();
     })();
   });
@@ -384,6 +387,7 @@ describe('Test applyPolicy', function(){
       await rclient.delAsync('policy:network:88888888-4881-4881-4881-488148812888');
       await rclient.delAsync('policy:network:99999999-4881-4881-4881-488148812999');
       await rclient.hsetAsync('policy:system', 'weak_password_scan', this.policy);
+      await rclient.hsetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks', this.result);
       done();
     })();
   });
@@ -456,22 +460,33 @@ describe('Test applyPolicy', function(){
   });
 });
 
-describe('Test scheduledScanTasks', function(){
+describe('Test clean tasks', function(){
   this.plugin = new InternalScanSensor({});
+  before((done) => (
+    async() => {
+      this.result = await rclient.hgetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks');
+      done();
+    })()
+  );
+
+  after((done) => (
+    async() => {
+      await rclient.hsetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks', this.result);
+      done();
+    })()
+  );
 
   it('should clean task results', async() =>  {
-    const originTasks = await this.plugin.getScanResult();
-
     const now = Date.now()/1000;
+
     this.plugin.scheduledScanTasks = {"a": {},"cron_4": {ts:now+4}, "cron_1": {ts:now+1}, "bbb":1, "cron_2": {ts:now+2}, "cron_3": {ts:now+3}};
-    await this.plugin._cleanTasks(2, false);
+    await rclient.hsetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks', JSON.stringify(this.plugin.scheduledScanTasks));
+
+    await this.plugin._cleanTasks(2);
     expect(this.plugin.scheduledScanTasks).to.eql({"cron_4": {ts:now+4},"cron_3": {ts:now+3}});
 
-    await this.plugin._cleanTasks(3, false);
+    await this.plugin._cleanTasks(3);
     expect(this.plugin.scheduledScanTasks).to.eql({"cron_4": {ts:now+4},"cron_3": {ts:now+3}});
-
-    this.plugin.scheduledScanTasks = originTasks.tasks;
-    this.plugin.saveScanTasks();
   });
 
   it('should get last n task keys', () => {
@@ -486,12 +501,13 @@ describe('Test scan hosts', function(){
   this.plugin = new InternalScanSensor({});
   this.plugin.subTaskMap = {};
   this.plugin.subTaskRunning = {};
-  this.plugin.scheduledScanTasks = {tasks:{}};
+  this.plugin.scheduledScanTasks = {};
   this.plugin.subTaskWaitingQueue = [];
 
   before((done) => (
     async() => {
       this.policy = await rclient.hgetAsync('policy:system', 'weak_password_scan');
+      this.result = await rclient.hgetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks');
       fireRouter.scheduleReload();
       await new Promise(resolve => setTimeout(resolve, 2000));
       await sysManager.updateAsync();
@@ -526,6 +542,7 @@ describe('Test scan hosts', function(){
   after((done) => (
     async() => {
       await rclient.hsetAsync('policy:system', 'weak_password_scan', this.policy);
+      await rclient.hsetAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT, 'tasks', this.result);
       done();
     })()
   );
@@ -637,6 +654,69 @@ describe('Test scan hosts', function(){
         {"result": [{"k":21}]},
       ], overlimit:true},
     });
-
   });
+});
+
+describe('Test new device scan', function(){
+  this.timeout(10000);
+  process.title = "FireMain"
+  this.plugin = new InternalScanSensor({});
+  this.plugin.subTaskMap = {};
+  this.plugin.subTaskRunning = {};
+  this.plugin.scheduledScanTasks = {};
+  this.plugin.subTaskWaitingQueue = [];
+
+  before((done) => (
+    async() => {
+      this.policy = await rclient.hgetAsync('policy:system', 'weak_password_scan');
+      fireRouter.scheduleReload();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await sysManager.updateAsync();
+      const keys = await rclient.keysAsync("network:uuid:*");
+      for (let key of keys) {
+        const profile = await rclient.hgetallAsync(key);
+        if (!profile) // just in case
+          continue;
+        const o = NetworkProfile.parse(profile);
+        const uuid = key.substring(13);
+        if (!uuid) {
+          continue;
+        }
+        o.uuid = uuid;
+        npm.networkProfiles[uuid] = new NetworkProfile(o)
+      }
+
+      const hostkeys = await rclient.keysAsync("host:mac:*");
+      const currentTs = Date.now() / 1000;
+      for (let key of hostkeys) {
+        const hostinfo = await rclient.hgetallAsync(key);
+        const host = new Host(hostinfo, true);
+        host.lastActiveTimestamp = currentTs;
+        hostManager.hostsdb[`host:mac:${host.mac}`] = host
+        hostManager.hosts.all.push(host);
+      }
+      hostManager.hosts.all = _.uniqWith(hostManager.hosts.all, (a,b) => a.o.ipv4 == b.o.ipv4 && a.o.mac == b.o.mac)
+      done();
+    })()
+  );
+
+  after((done) => (
+    async() => {
+      await rclient.hsetAsync('policy:system', 'weak_password_scan', this.policy);
+      done();
+    })()
+  );
+
+  it('should get scan results', async() => {
+    const hosts = Object.values(hostManager.hosts.all).filter(i => !sysManager.isMyMac(i.o.mac) && (i.o.lastActiveTimestamp > (Date.now()/1000-86400)));
+    if (hosts.length > 0) {
+      sem.sendEventToFireMain({
+        type: "SubmitWeakPasswordScanTask",
+        hosts: [hosts[0].o.mac],
+        key: "new_device:"+ hosts[0].o.mac,
+        message: "new_device:"+ hosts[0].o.mac,
+      });
+    }
+  });
+
 });

@@ -347,6 +347,14 @@ class DeviceHook extends Hook {
           }
           await this.setupLocalDeviceDomain(mac, 'new_device');
 
+          if (fc.isFeatureOn('new_device_internal_scan')) {
+            sem.sendEventToFireMain({
+              type: "SubmitWeakPasswordScanTask",
+              hosts: [mac],
+              key: "new_device:"+ mac,
+              message: "new_device_internal_scan " + mac,
+            });
+          }
           this.messageBus.publish("DiscoveryEvent", "Device:Create", mac, enrichedHost);
         } catch (err) {
           log.error("Failed to handle NewDeviceFound event:", err);
