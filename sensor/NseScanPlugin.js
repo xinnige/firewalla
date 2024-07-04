@@ -28,6 +28,8 @@ const log = require('../net2/logger.js')(__filename);
 const networkProfileManager = require('../net2/NetworkProfileManager.js');
 const sysManager = require('../net2/SysManager.js');
 const rclient = require('../util/redis_manager.js').getRedisClient();
+const pclient = require('../util/redis_manager.js').getPublishClient();
+
 const AsyncLock = require('../vendor_lib/async-lock');
 
 const extensionManager = require('./ExtensionManager.js');
@@ -39,6 +41,7 @@ const featureName = 'nse_scan';
 const policyKeyName = 'nse_scan';
 const MIN_CRON_INTERVAL = 3600; // at most one job every 24 hours, to avoid job queue congestion
 const MAX_RECODE_NUM = 9; // only keeps last N records
+const TTL_SEC = 2678400; // expire in 86400 * 31 seconds
 
 const lock = new AsyncLock();
 const LOCK_APPLY_NSE_SCAN_POLICY = "LOCK_APPLY_NSE_SCAN_POLICY";
@@ -301,7 +304,9 @@ class NseScanPlugin extends Sensor {
               interface: result.Interface,
               domainNameServer: result.DomainNameServer || '',
               router: result.Router  || '',
+              scriptName: scriptName,
               target: 'broadcast:'+intf.mac_address,
+              protocol: 'dhcp',
               ts: startTs,
             });
           }
@@ -310,7 +315,7 @@ class NseScanPlugin extends Sensor {
       }
       case 'dhcp-discover': {
         // scan devices
-        const hosts = hostManager.getActiveHosts();
+        const hosts = hostManager.getUniqActiveHosts();
         log.debug("exec nse on devices", hosts.map((i) => { return {ipv4: i.o.ipv4, mac: i.o.mac} }));
         for (const h of hosts) {
           if (h.o.ipv4 && h.o.intf && this._checkDeviceNsePolicy(h.o.intf, h.policy, Constants.REDIS_HKEY_NSE_DHCP)) {
@@ -331,6 +336,8 @@ class NseScanPlugin extends Sensor {
                 interface: devIntf && devIntf.name,
                 target: 'mac:'+h.o.mac,
                 local: sysManager.isMyMac(h.o.mac),
+                scriptName: scriptName,
+                protocol: 'dhcp',
                 ts: startTs,
               });
             }
@@ -370,7 +377,8 @@ class NseScanPlugin extends Sensor {
       for (const serverIp in newResult[intf]) {
         for (const result of newResult[intf][serverIp]) {
           if (result.target.startsWith('mac:')) {
-            await rclient.hsetAsync(`${policyKeyName}:${result.target}`, fieldKey, JSON.stringify(result));
+            await rclient.hsetAsync(`${featureName}:${result.target}`, fieldKey, JSON.stringify(result));
+            await rclient.expireAsync(`${featureName}:${result.target}`, TTL_SEC);
           }
         }
       }
@@ -408,6 +416,10 @@ class NseScanPlugin extends Sensor {
     if (suspects && suspects.alarm ) {
       log.warn('detect suspicious of more than one dhcp server in network', JSON.stringify(suspects));
       await this._saveNseSuspects(fieldKey, suspects.suspects, prevKeys);
+      // TODO: dhcp create
+      for (const suspect of suspects.suspects) {
+        await pclient.publishAsync("alarm:create", JSON.stringify(await this._genAlarm(suspect)));
+      }
     }
 
     // clean outdated
@@ -418,6 +430,29 @@ class NseScanPlugin extends Sensor {
     }
   }
 
+  async _genAlarm(result) {
+    const _alarm = {
+      'type': 'bro_notice',
+      'p.noticeType': 'Scan::Nse_Scan',
+      'p.intf.name': result.interface,
+      'p.protocol': result.protocol,
+      'p.script': result.scriptName,
+      'p.message': `Detect an external ${result.protocol.toUpperCase()} server ${result.serverIdentifier}.`,
+    }
+    const macAddr = result.target.split(':').slice(1).join(':');
+    const targetHost = await hostManager.getHostAsync(macAddr, true);
+    log.debug("targetHost", targetHost.o);
+    if (targetHost) {
+      _alarm.device = targetHost.name();
+      _alarm['p.intf.id'] = targetHost.o.intf;
+      _alarm['p.device.id'] = targetHost.getGUID();
+      _alarm['p.device.name'] = _alarm.device;
+      _alarm['p.device.ip'] = targetHost.o.ipv4Addr;
+      _alarm['p.device.mac'] = macAddr;
+    }
+    return _alarm
+  }
+
   async _saveNseSuspects(fieldKey, suspects, prevKeys) {
     log.debug('save nse suspects', fieldKey, JSON.stringify(suspects));
 
@@ -425,6 +460,7 @@ class NseScanPlugin extends Sensor {
       const macAddr = result.target.split(':').slice(1).join(':');
       const rkey = `${policyKeyName}:suspect:${macAddr}`;
       await rclient.hsetAsync(rkey, fieldKey, JSON.stringify(result));
+      await rclient.expireAsync(rkey, TTL_SEC);
       if (prevKeys[rkey] == 0) {
         prevKeys[rkey] = 1
       }
