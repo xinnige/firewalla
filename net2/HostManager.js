@@ -2169,6 +2169,23 @@ module.exports = class HostManager extends Monitorable {
     return this.hosts.all.filter(host => host.o && host.o.lastActiveTimestamp > activeTimestampThreshold)
   }
 
+  // Remove duplicated hosts with same ipv4 address
+  getUniqActiveHosts() {
+    const hosts = this.getActiveHosts();
+    let result = {};
+    for (const h of hosts) {
+      if (h.o.ipv4Addr && result[h.o.ipv4Addr] && (parseFloat(result[h.o.ipv4Addr].o.lastActiveTimestamp) >= parseFloat(h.o.lastActiveTimestamp))) {
+        continue
+      }
+      if (h.o.ipv4Addr) {
+        result[h.o.ipv4Addr] = h;
+      } else {
+        result[h.o.lastActiveTimestamp] = h;
+      }
+    }
+    return Object.values(result);
+  }
+
   getAllMonitorables() {
     return this.getActiveHosts().concat(IdentityManager.getAllIdentitiesFlat())
   }

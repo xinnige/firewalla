@@ -215,6 +215,23 @@ describe('Test run status', function(){
   this.timeout(10000);
   this.plugin = new NseScanPlugin({});
 
+  before((done) => (
+    async() => {
+      const hostkeys = await rclient.keysAsync("host:mac:*");
+      for (let key of hostkeys) {
+        const hostinfo = await rclient.hgetallAsync(key);
+        const host = new Host(hostinfo, true);
+        hostManager.hostsdb[`host:mac:${host.o.mac}`] = host
+        hostManager.hostsdb[`host:ip4:${host.o.ipv4Addr}`] = host
+        hostManager.hosts.all.push(host);
+      }
+      hostManager.hosts.all = _.uniqWith(hostManager.hosts.all, (a,b) => a.o.ipv4 == b.o.ipv4 && a.o.mac == b.o.mac)
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      done();
+    })()
+  );
+
   it('should get running status', async() => {
     await this.plugin._updateRunningStatus('complete');
     let data = await this.plugin._updateRunningStatus('scanning');
@@ -223,5 +240,14 @@ describe('Test run status', function(){
     expect(data).to.be.eql(0);
     data = await this.plugin._updateRunningStatus('complete');
     expect(data).to.be.eql(1);
+  });
+
+  it.skip('should gen alarm', async() => {
+    const alarm = await this.plugin._genAlarm({"serverIdentifier": "10.11.82.1",
+      "domainNameServer": "10.11.82.1", "router": "10.11.82.1", "interface": "br2", "target": "mac:B6:EC:A8:80:C7:9D",
+      "local": false, "ts": 1719994002.847});
+    log.debug("_alarm", alarm)
+    expect(alarm.device).to.equal('Unknown');
+    expect(alarm['p.device.id']).to.equal('br2');
   });
 });

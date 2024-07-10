@@ -28,6 +28,7 @@ const log = require('../net2/logger.js')(__filename);
 const networkProfileManager = require('../net2/NetworkProfileManager.js');
 const sysManager = require('../net2/SysManager.js');
 const rclient = require('../util/redis_manager.js').getRedisClient();
+const pclient = require('../util/redis_manager.js').getPublishClient();
 
 const AsyncLock = require('../vendor_lib/async-lock');
 
@@ -303,7 +304,9 @@ class NseScanPlugin extends Sensor {
               interface: result.Interface,
               domainNameServer: result.DomainNameServer || '',
               router: result.Router  || '',
+              scriptName: scriptName,
               target: 'broadcast:'+intf.mac_address,
+              protocol: 'dhcp',
               ts: startTs,
             });
           }
@@ -312,7 +315,7 @@ class NseScanPlugin extends Sensor {
       }
       case 'dhcp-discover': {
         // scan devices
-        const hosts = hostManager.getActiveHosts();
+        const hosts = hostManager.getUniqActiveHosts();
         log.debug("exec nse on devices", hosts.map((i) => { return {ipv4: i.o.ipv4, mac: i.o.mac} }));
         for (const h of hosts) {
           if (h.o.ipv4 && h.o.intf && this._checkDeviceNsePolicy(h.o.intf, h.policy, Constants.REDIS_HKEY_NSE_DHCP)) {
@@ -333,6 +336,8 @@ class NseScanPlugin extends Sensor {
                 interface: devIntf && devIntf.name,
                 target: 'mac:'+h.o.mac,
                 local: sysManager.isMyMac(h.o.mac),
+                scriptName: scriptName,
+                protocol: 'dhcp',
                 ts: startTs,
               });
             }
@@ -384,13 +389,16 @@ class NseScanPlugin extends Sensor {
     const deadline = Date.now() / 1000 - 2592000; // 30 days
     for (const key of keys) {
       const data = await rclient.hgetAsync(key, fieldKey);
+      if (!data) {
+        continue
+      }
       try {
         const result = JSON.parse(data);
         if (result.ts && result.ts < deadline ) {
           await rclient.hdelAsync(key, fieldKey);
         }
       } catch (err) {
-        log.warn("delete invalid nse scan result", key, fieldKey);
+        log.warn("force delete invalid nse scan result", key, fieldKey);
         await rclient.hdelAsync(key, fieldKey);
       }
     }
@@ -409,8 +417,12 @@ class NseScanPlugin extends Sensor {
     keys.forEach( (i) => { prevKeys[i] = 0 });
 
     if (suspects && suspects.alarm ) {
-      log.warn('detect suspicious of more than one dhcp server in network', JSON.stringify(suspects));
+      log.warn('detect dhcp server in internal network', JSON.stringify(suspects));
       await this._saveNseSuspects(fieldKey, suspects.suspects, prevKeys);
+      // TODO: dhcp create
+      for (const suspect of suspects.suspects) {
+        await pclient.publishAsync("alarm:create", JSON.stringify(await this._genAlarm(suspect)));
+      }
     }
 
     // clean outdated
@@ -419,6 +431,29 @@ class NseScanPlugin extends Sensor {
         await rclient.hdelAsync(k, fieldKey);
       }
     }
+  }
+
+  async _genAlarm(result) {
+    const _alarm = {
+      'type': 'bro_notice',
+      'p.noticeType': 'Scan::Nse_Scan',
+      'p.intf.name': result.interface,
+      'p.protocol': result.protocol,
+      'p.script': result.scriptName,
+      'p.message': `Detect an external ${result.protocol.toUpperCase()} server ${result.serverIdentifier}.`,
+    }
+    const macAddr = result.target.split(':').slice(1).join(':');
+    const targetHost = await hostManager.getHostAsync(macAddr, true);
+    log.debug("targetHost", targetHost.o);
+    if (targetHost) {
+      _alarm.device = targetHost.name();
+      _alarm['p.intf.id'] = targetHost.o.intf;
+      _alarm['p.device.id'] = targetHost.getGUID();
+      _alarm['p.device.name'] = _alarm.device;
+      _alarm['p.device.ip'] = targetHost.o.ipv4Addr;
+      _alarm['p.device.mac'] = macAddr;
+    }
+    return _alarm
   }
 
   async _saveNseSuspects(fieldKey, suspects, prevKeys) {
