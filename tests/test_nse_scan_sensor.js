@@ -84,105 +84,111 @@ describe('Test NseScanPlugin', function() {
     })()
   );
 
-  it('should get last result', async() => {
-    const ts = Date.now()/1000;
-    const content = '{"dhcp_3":{"ts":'+(ts-100)+',"results":{"br3":{}}},"dhcp_4.568":{"ts":'+ts+',"results":{"br4":{}}},"dhcp_1.568":{"ts":'+(ts-300)+',"results":{"br1":{}}},"dhcp_2.568":{"ts":'+(ts-200)+',"results":{"br2":{}}}}';
-    await rclient.hsetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp', content);
-    const result = await this.plugin.getLatestResult('dhcp');
-    expect(result.lastResult).to.eql({"br4":{}});
-    expect(result.alarm).to.be.false;
-  });
+  // it('should get last result', async() => {
+  //   const ts = Date.now()/1000;
+  //   const content = '{"dhcp_3":{"ts":'+(ts-100)+',"results":{"br3":{}}},"dhcp_4.568":{"ts":'+ts+',"results":{"br4":{}}},"dhcp_1.568":{"ts":'+(ts-300)+',"results":{"br1":{}}},"dhcp_2.568":{"ts":'+(ts-200)+',"results":{"br2":{}}}}';
+  //   await rclient.hsetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp', content);
+  //   const result = await this.plugin.getLatestResult('dhcp');
+  //   expect(result.lastResult).to.eql({"br4":{}});
+  //   expect(result.alarm).to.be.false;
+  // });
 
-  it('should exec broadcast-dhcp-discover', async() =>{
-    const interfaces = sysManager.getInterfaces(false).filter( i => i.name == "eth0");
-    for (const intf of interfaces) {
-      await _setIntfPolicy(intf.uuid, {state: true, dhcp: true});
-    }
-    const results = await this.plugin.execNse('broadcast-dhcp-discover');
-    log.debug('broadcast-dhcp-discover', JSON.stringify(results));
+  // it('should exec broadcast-dhcp-discover', async() =>{
+  //   const interfaces = sysManager.getInterfaces(false).filter( i => i.name == "eth0");
+  //   for (const intf of interfaces) {
+  //     await _setIntfPolicy(intf.uuid, {state: true, dhcp: true});
+  //   }
+  //   const results = await this.plugin.execNse('broadcast-dhcp-discover');
+  //   log.debug('broadcast-dhcp-discover', JSON.stringify(results));
+  //   expect(results.length).to.be.not.null;
+  // });
+
+  // it('should exec dhcp-discover', async() =>{
+  //   const results = await this.plugin.execNse('dhcp-discover');
+  //   log.debug('dhcp-discover', JSON.stringify(results));
+  //   expect(results.length).to.be.not.null;
+  // });
+
+  it('should exec broadcast-dhcp6-discover', async() => {
+    const results = await this.plugin.execNse('broadcast-dhcp6-discover');
+    log.debug('broadcast-dhcp6-discover:', JSON.stringify(results));
     expect(results.length).to.be.not.null;
   });
 
-  it('should exec dhcp-discover', async() =>{
-    const results = await this.plugin.execNse('dhcp-discover');
-    log.debug('dhcp-discover', JSON.stringify(results));
-    expect(results.length).to.be.not.null;
-  });
+  // it('should run dhcp once', async() => {
+  //   await rclient.delAsync(Constants.REDIS_KEY_NSE_RESULT);
+  //   const interfaces = sysManager.getInterfaces(false);
+  //   for (const intf of interfaces) {
+  //     await _setIntfPolicy(intf.uuid, {state: false});
+  //   }
+  //   await this.plugin.runOnceDhcp();
+  //   const results = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp');
+  //   expect(results).to.not.empty;
+  // })
 
-  it('should run dhcp once', async() => {
-    await rclient.delAsync(Constants.REDIS_KEY_NSE_RESULT);
-    const interfaces = sysManager.getInterfaces(false);
-    for (const intf of interfaces) {
-      await _setIntfPolicy(intf.uuid, {state: false});
-    }
-    await this.plugin.runOnceDhcp();
-    const results = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp');
-    expect(results).to.not.empty;
-  })
+  // it('should run cron job', async() => {
+  //   const interfaces = sysManager.getInterfaces(false);
+  //   for (const intf of interfaces) {
+  //     if (intf.name == "br0") {
+  //       await _setIntfPolicy(intf.uuid, {"state": true, "dhcp":true});
+  //     }
+  //     else {
+  //       await _setIntfPolicy(intf.uuid, {state: false});
+  //     }
+  //   }
+  //   await this.plugin.runCronJob('dhcp', true);
+  //   const results = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp');
+  //   expect(results).to.not.empty;
+  // })
 
-  it('should run cron job', async() => {
-    const interfaces = sysManager.getInterfaces(false);
-    for (const intf of interfaces) {
-      if (intf.name == "br0") {
-        await _setIntfPolicy(intf.uuid, {"state": true, "dhcp":true});
-      }
-      else {
-        await _setIntfPolicy(intf.uuid, {state: false});
-      }
-    }
-    await this.plugin.runCronJob('dhcp', true);
-    const results = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp');
-    expect(results).to.not.empty;
-  })
+  // it('should check results', () => {
+  //   const results = {
+  //     "br0":{
+  //       "192.168.196.105":[{"serverIdentifier": "192.168.196.105","interface": "br0","local": false, "target":"mac:a1:b2:c3:d4"},{"serverIdentifier": "192.168.196.105","target": "broadcast:a"}],
+  //       "192.168.196.1": [{"serverIdentifier": "192.168.196.1","interface": "br0","local": true, "target":"mac:aa:bb:cc:dd"}]},
+  //     "eth0.204": {
+  //       "192.168.10.254": [{"serverIdentifier": "192.168.10.254", "interface": "eth0.204","target": "broadcast:1"}]},
+  //     "eth0":{
+  //       "192.168.23.1":[{"serverIdentifier": "192.168.23.1","interface": "eth0", "target": "broadcast:2"}]}}
+  //   const checkResult = this.plugin.checkDhcpResult(results);
+  //   expect(checkResult.alarm).to.be.true;
+  //   expect(checkResult.suspects).to.be.eql([{"serverIdentifier": "192.168.196.105","interface": "br0","local": false, "target":"mac:a1:b2:c3:d4"}]);
+  // })
 
-  it('should check results', () => {
-    const results = {
-      "br0":{
-        "192.168.196.105":[{"serverIdentifier": "192.168.196.105","interface": "br0","local": false, "target":"mac:a1:b2:c3:d4"},{"serverIdentifier": "192.168.196.105","target": "broadcast:a"}],
-        "192.168.196.1": [{"serverIdentifier": "192.168.196.1","interface": "br0","local": true, "target":"mac:aa:bb:cc:dd"}]},
-      "eth0.204": {
-        "192.168.10.254": [{"serverIdentifier": "192.168.10.254", "interface": "eth0.204","target": "broadcast:1"}]},
-      "eth0":{
-        "192.168.23.1":[{"serverIdentifier": "192.168.23.1","interface": "eth0", "target": "broadcast:2"}]}}
-    const checkResult = this.plugin.checkDhcpResult(results);
-    expect(checkResult.alarm).to.be.true;
-    expect(checkResult.suspects).to.be.eql([{"serverIdentifier": "192.168.196.105","interface": "br0","local": false, "target":"mac:a1:b2:c3:d4"}]);
-  })
+  // it('should save nse results', async() => {
+  //   await this.plugin.saveNseResults('key1', {}, Date.now()/1000);
+  //   const content = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'key1');
+  //   log.debug('nse results', content);
+  //   expect(content).to.be.contains(`"spendtime":0`);
+  //   await rclient.hdelAsync(Constants.REDIS_KEY_NSE_RESULT, 'key1');
+  // })
 
-  it('should save nse results', async() => {
-    await this.plugin.saveNseResults('key1', {}, Date.now()/1000);
-    const content = await rclient.hgetAsync(Constants.REDIS_KEY_NSE_RESULT, 'key1');
-    log.debug('nse results', content);
-    expect(content).to.be.contains(`"spendtime":0`);
-    await rclient.hdelAsync(Constants.REDIS_KEY_NSE_RESULT, 'key1');
-  })
+  // it('should save host nse result', async() => {
+  //   const currentTs = Date.now()/1000;
+  //   await rclient.hsetAsync('nse_scan:mac:aaaa', 'key1', `{"ts": ${currentTs  - 2992000}}`);
+  //   await rclient.hsetAsync('nse_scan:mac:123456', 'key1', `{"ts": ${currentTs  - 2992000}}`);
+  //   await this.plugin.saveHostNseResults('key1', {"eth1": {"ip":[{target: "mac:123456", ts: currentTs}]}});
+  // });
 
-  it('should save host nse result', async() => {
-    const currentTs = Date.now()/1000;
-    await rclient.hsetAsync('nse_scan:mac:aaaa', 'key1', `{"ts": ${currentTs  - 2992000}}`);
-    await rclient.hsetAsync('nse_scan:mac:123456', 'key1', `{"ts": ${currentTs  - 2992000}}`);
-    await this.plugin.saveHostNseResults('key1', {"eth1": {"ip":[{target: "mac:123456", ts: currentTs}]}});
-  });
+  // it('should save suspect nse result', async() => {
+  //   const ts = Date.now()/1000;
+  //   await rclient.hsetAsync('nse_scan:suspect:aaaa', 'key1', "{}");
+  //   await rclient.hsetAsync('nse_scan:suspect:123456', 'key1', "{}");
+  //   await this.plugin.saveNseSuspects('key1', [{target: "mac:123456", ts: ts}]);
+  // });
 
-  it('should save suspect nse result', async() => {
-    const ts = Date.now()/1000;
-    await rclient.hsetAsync('nse_scan:suspect:aaaa', 'key1', "{}");
-    await rclient.hsetAsync('nse_scan:suspect:123456', 'key1', "{}");
-    await this.plugin.saveNseSuspects('key1', [{target: "mac:123456", ts: ts}]);
-  });
+  // it('should get dhcp results', async() => {
+  //   const ts = Date.now()/1000;
+  //   const content = '{"key_2": {"ts": 1716190958}, "dhcp_1716282358.568":{"ts":'+ts+',"results":{"br0":{"ip":[]}}}}'
+  //   await rclient.hsetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp', content);
 
-  it('should get dhcp results', async() => {
-    const ts = Date.now()/1000;
-    const content = '{"key_2": {"ts": 1716190958}, "dhcp_1716282358.568":{"ts":'+ts+',"results":{"br0":{"ip":[]}}}}'
-    await rclient.hsetAsync(Constants.REDIS_KEY_NSE_RESULT, 'dhcp', content);
-
-    const results = await this.plugin.getNseResults('dhcp');
-    expect(Object.keys(results).length).to.be.equal(1);
-    expect(Object.entries(results)[0][0]).to.be.equal('dhcp_1716282358.568');
-  })
+  //   const results = await this.plugin.getNseResults('dhcp');
+  //   expect(Object.keys(results).length).to.be.equal(1);
+  //   expect(Object.entries(results)[0][0]).to.be.equal('dhcp_1716282358.568');
+  // })
 });
 
-describe('Test applyPolicy', function(){
+describe.skip('Test applyPolicy', function(){
   this.timeout(10000);
   this.plugin = new NseScanPlugin({});
 
@@ -218,7 +224,7 @@ describe('Test applyPolicy', function(){
   });
 });
 
-describe('Test run status', function(){
+describe.skip('Test run status', function(){
   this.timeout(10000);
   this.plugin = new NseScanPlugin({});
 

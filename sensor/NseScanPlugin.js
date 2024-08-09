@@ -242,7 +242,7 @@ class NseScanPlugin extends Sensor {
   }
 
   async runOnceDhcp() {
-    let scripts = ['broadcast-dhcp-discover', 'dhcp-discover'];
+    let scripts = ['broadcast-dhcp-discover', 'dhcp-discover', 'broadcast-dhcp6-discover'];
     let dhcpResults = {};
     const startTs = Date.now()/1000;
     for (const scriptName of scripts){
@@ -340,16 +340,21 @@ class NseScanPlugin extends Sensor {
         }
         break;
       }
-      // TODO: ipv6 NOT IMPLEMENTED
+      // ipv6 solicit
       case 'broadcast-dhcp6-discover': {
         const interfaces = sysManager.getInterfaces(false).filter(i => i.ip6_addresses && i.ip6_addresses.length > 0);
-        log.debug("exec nse on interfaces", interfaces);
+        log.verbose("exec nse on interfaces", interfaces);
         for (const intf of interfaces) {
           const result = await dhcp.broadcastDhcp6Discover(intf.name, nseConfig[scriptName]);
-          log.debug("nse result:", result);
+          log.debug("nse result", scriptName, result);
           if (result && result.ok) {
+            const devIntf = sysManager.getInterfaceViaUUID(h.o.intf);
             results.push({
               serverIdentifier: result.ServerIdentifier,
+              domainNameServer: result.DNSServers,
+              interface: devIntf && devIntf.name,
+              target: 'mac:'+h.o.mac,
+              local: sysManager.isMyMac(h.o.mac),
               ts: startTs,
             });
           }
