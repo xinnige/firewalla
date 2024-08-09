@@ -32,6 +32,10 @@ if [ -f "${FIREWALLA_HIDDEN}/run/assets/nmap" ]; then
   sudo cp -f "${FIREWALLA_HIDDEN}/run/assets/nmap" $(which nmap)
 fi
 
+if [ -f "/usr/share/nmap/nmap-os-db" ]; then
+  sudo sed -i 's/T3(R=Y|N%DF=Y%T=3B-45%TG=40%W=403D%S=O%A=S+%F=AS%O=M5B4NW0NNT11%RD=0)/T3(R=Y%DF=Y%T=3B-45%TG=40%W=403D%S=O%A=S+%F=AS%O=M5B4NW0NNT11%RD=0)/g' /usr/share/nmap/nmap-os-db
+fi
+
 NSE_FILES="outlib.lua rand.lua tableaux.lua"
 
 for NFILE in $NSE_FILES

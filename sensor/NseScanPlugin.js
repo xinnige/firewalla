@@ -201,22 +201,24 @@ class NseScanPlugin extends Sensor {
       return;
     }
     switch (key) {
+      case Constants.REDIS_HKEY_NSE_DHCP6:
       case Constants.REDIS_HKEY_NSE_DHCP: {
-        const r = await this._updateRunningStatus(STATE_SCANNING, "dhcp");
+        const r = await this._updateRunningStatus(STATE_SCANNING, key);
         if (r != 1) {
           log.info('dhcp scan task is running, skip', r);
           return;
         }
         try {
-          const onceResult = await this.runOnceDhcp();
-          // check dhcp
+          const onceResult = await this.runOnceDhcp(key == Constants.REDIS_HKEY_NSE_DHCP ? 4 : 6);
+          // check dhcp/dhcp6 result
           const suspects = this.checkDhcpResult(onceResult);
           await this.saveNseSuspects(key, suspects);
         } catch (err) {
-          log.warn('run dhcp error', err.message);
+          log.warn(`run ${key} error`, err.message);
         } finally {
-          await this._updateRunningStatus(STATE_COMPLETE, "dhcp");
+          await this._updateRunningStatus(STATE_COMPLETE, key);
         }
+        break;
       }
     }
   }
@@ -241,8 +243,18 @@ class NseScanPlugin extends Sensor {
     return {'alarm': false};
   }
 
-  async runOnceDhcp() {
-    let scripts = ['broadcast-dhcp-discover', 'dhcp-discover'];
+  async runOnceDhcp(af=4) {
+    let scripts, rkey;
+    if (af == 4) {
+      scripts = ['broadcast-dhcp-discover', 'dhcp-discover'];
+      rkey = Constants.REDIS_HKEY_NSE_DHCP;
+    } else if (af == 6) {
+      scripts = ['broadcast-dhcp6-discover'];
+      rkey = Constants.REDIS_HKEY_NSE_DHCP6;
+    } else {
+      log.info("unknown ip version", af);
+      return;
+    }
     let dhcpResults = {};
     const startTs = Date.now()/1000;
     for (const scriptName of scripts){
@@ -269,8 +281,8 @@ class NseScanPlugin extends Sensor {
         }
       }
     }
-    await this.saveNseResults(Constants.REDIS_HKEY_NSE_DHCP, dhcpResults, startTs);
-    await this.saveHostNseResults(Constants.REDIS_HKEY_NSE_DHCP, dhcpResults);
+    await this.saveNseResults(rkey, dhcpResults, startTs);
+    await this.saveHostNseResults(rkey, dhcpResults);
     return dhcpResults;
   }
 
@@ -283,7 +295,7 @@ class NseScanPlugin extends Sensor {
     switch (scriptName) {
       case 'broadcast-dhcp-discover': {
         const interfaces = sysManager.getInterfaces(false).filter(i => i.ip_address && i.mac_address && i.type != "wan");
-        log.debug("exec nse on interfaces", interfaces.map(i => i.name));
+        log.verbose("exec nse on interfaces", interfaces.map(i => i.name));
         for (const intf of interfaces) {
           if (!this._checkNetworkNsePolicy(intf.uuid, Constants.REDIS_HKEY_NSE_DHCP)) {
             log.debug('skip network', scriptName, intf.name);
@@ -340,16 +352,32 @@ class NseScanPlugin extends Sensor {
         }
         break;
       }
-      // TODO: ipv6 NOT IMPLEMENTED
+      // ipv6 solicit
       case 'broadcast-dhcp6-discover': {
         const interfaces = sysManager.getInterfaces(false).filter(i => i.ip6_addresses && i.ip6_addresses.length > 0);
-        log.debug("exec nse on interfaces", interfaces);
+        log.verbose("exec nse dhcp6 scan on interfaces", interfaces.map(i => i.name));
         for (const intf of interfaces) {
-          const result = await dhcp.broadcastDhcp6Discover(intf.name, nseConfig[scriptName]);
-          log.debug("nse result:", result);
+          if (!this._checkNetworkNsePolicy(intf.uuid, Constants.REDIS_HKEY_NSE_DHCP)) {
+            log.debug('skip network', scriptName, intf.name);
+            continue;
+          }
+          let result;
+          try {
+           result = await dhcp.broadcastDhcp6Discover(intf.name, nseConfig[scriptName]);
+          } catch (err) {
+            log.warn("fail to run nse script", scriptName, err.message);
+            continue
+          }
+          log.debug("nse result", scriptName, result);
           if (result && result.ok) {
             results.push({
               serverIdentifier: result.ServerIdentifier,
+              serverAddress: result.ServerAddress,
+              serverMacAddress: result.ServerMACAddress,
+              domainNameServer: result.DNSServers,
+              interface: intf.name,
+              target: 'mac:'+result.ServerMACAddress,
+              local: !result.ServerMACAddress || sysManager.isMyMac(result.ServerMACAddress), // must check mac
               ts: startTs,
             });
           }
@@ -384,6 +412,9 @@ class NseScanPlugin extends Sensor {
     const deadline = Date.now() / 1000 - 2592000; // 30 days
     for (const key of keys) {
       const data = await rclient.hgetAsync(key, fieldKey);
+      if (!data) {
+        continue
+      }
       try {
         const result = JSON.parse(data);
         if (result.ts && result.ts < deadline ) {

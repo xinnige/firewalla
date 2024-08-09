@@ -54,6 +54,7 @@ module.exports = {
   REDIS_KEY_HISTORY_MSG_PREFIX: "_hx:msg:",
 
   REDIS_HKEY_NSE_DHCP: "dhcp",
+  REDIS_HKEY_NSE_DHCP6: "dhcp6",
   REDIS_HKEY_CONN_OINTF: "oIntf",
   REDIS_HKEY_CONN_HOST: "host",
   REDIS_HKEY_CONN_APID: "apid", // allow rule id
