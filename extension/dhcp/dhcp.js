@@ -41,7 +41,6 @@ async function broadcastDhcpDiscover(intf, ipv4=null, macAddr=null, options=null
   if (ipv4) {
     cmdArgs.push(`-S ${ipv4}`)
   }
-  log.debug("Broadcasting DHCP discover on ", intf, ipv4, macAddr);
   let scriptName = await getScriptName("broadcast-dhcp-discover", options);
   let scriptArgs = getScriptArgs(["broadcast-dhcp-discover.mac="+macAddr], options);
 
@@ -98,10 +97,10 @@ async function broadcastDhcpDiscover(intf, ipv4=null, macAddr=null, options=null
         return;
       }
     });
-  });  
+  });
 }
 
-async function broadcastDhcp6Discover(intf) {
+async function broadcastDhcp6Discover(intf, options=null) {
   let result = {ok: false};
   if (!intf) {
     const config = await Config.getConfig(true);
@@ -112,17 +111,28 @@ async function broadcastDhcp6Discover(intf) {
   try {
     const cmdresult = await execAsync(cmd);
     let output = JSON.parse(cmdresult.stdout);
-    let kvs = _.get(output, `nmaprun.prescript.script.table.elem`, []); // TODO: fix broadcast-dhcp6-discover path
+    let kvs = (_.get(output, `nmaprun.prescript.script.output`)||"").split("\n");
     if (_.isArray(kvs)) {
       for (const item of kvs) {
-        result[item.key.replace(/\s/g, '')] = item['#content'];
+        const tmp = item.replace(/\:+/, '\x01').split('\x01');
+        tmp[0] = tmp[0].replace(/(^|\s)+\S/g, match => match.toUpperCase()).replace(/\s/g, '');
+        if (tmp.length < 2 || tmp[0].length == 0) {
+          continue
+        }
+        result[tmp[0]] = tmp[0] == "Status" ? tmp[1] : tmp[1].replace(/\s/g, '');
       }
-      result['ok'] = true;
+      if (result.ServerIdentifier) {
+        result['ok'] = true;
+      }
+      if (result.ServerIdentifier && result.ServerAddress) {
+        result.ServerIdentifier = [result.ServerAddress, result.ServerAddress = result.ServerIdentifier][0];
+      }
     }
   } catch(err) {
     log.error("Failed to nmap scan:", err);
-    result['err'] = `fail to run nmap broadcast-dhcp6-discover ${intf}` + err.message;
+    result['err'] = `fail to run nmap broadcast-dhcp6-discover ${intf} ${err.message}`;
   }
+  return result;
 }
 
 async function dhcpDiscover(serverIp, macAddr=null, options=null) {

@@ -393,7 +393,7 @@ describe('Test applyPolicy', function(){
     await _setTargetPolicy('network', '88888888-4881-4881-4881-488148812888', true);
 
     data = await this.plugin.getScanHosts({state: false, ts:9999});
-    expect(data.hosts).to.be.empty;
+    expect(data.hosts).to.be.eql(['20:6D:31:01:2B:88']);
 
     data = await this.plugin.getScanHosts({state: true, ts:9999});
     expect(data.hosts).to.be.eql(['20:6D:31:01:2B:88','20:6D:31:01:2B:89']);

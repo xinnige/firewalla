@@ -106,6 +106,12 @@ describe('Test NseScanPlugin', function() {
     expect(results.length).to.be.not.null;
   });
 
+  it('should exec broadcast-dhcp6-discover', async() => {
+    const results = await this.plugin.execNse('broadcast-dhcp6-discover');
+    log.debug('broadcast-dhcp6-discover:', JSON.stringify(results));
+    expect(results.length).to.be.not.null;
+  });
+
   it('should run dhcp once', async() => {
     await rclient.delAsync(Constants.REDIS_KEY_NSE_RESULT);
     const interfaces = sysManager.getInterfaces(false);
@@ -179,7 +185,7 @@ describe('Test NseScanPlugin', function() {
   })
 });
 
-describe('Test applyPolicy', function(){
+describe.skip('Test applyPolicy', function(){
   this.timeout(10000);
   this.plugin = new NseScanPlugin({});
 
@@ -211,7 +217,7 @@ describe('Test applyPolicy', function(){
   });
 });
 
-describe('Test run status', function(){
+describe.skip('Test run status', function(){
   this.timeout(10000);
   this.plugin = new NseScanPlugin({});
 

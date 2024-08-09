@@ -11,7 +11,7 @@
         "scriptArgs": "broadcast-dhcp-discover.timeout=20"
     },
     "broadcast-dhcp6-discover": {
-        "protocol": "dhcp",
-        "port": 67
+        "protocol": "dhcp6",
+        "port": 567
     }
 }
