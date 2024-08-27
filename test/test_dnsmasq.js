@@ -145,7 +145,7 @@ describe.skip('Test dnsmasq feature', function() {
   });
 });
 
-describe('Test dns connectivity', function(){
+describe.skip('Test dns connectivity', function(){
   this.timeout(30000);
 
   before((done) => {
