@@ -27,7 +27,7 @@ const WGPeer = require('../net2/identity/WGPeer.js');
 describe('Test WgvpnConnSensor check peer activity', function(){
     this.timeout(3000);
 
-    beforeEach((done) => {
+    before((done) => {
     (async() => {
         this.todelete = [];
         const results = await exec(`sudo wg show all latest-handshakes`).then(i => i.stdout.trim().split('\n')).catch((err) => {log.error(err.stderr)});
@@ -43,7 +43,7 @@ describe('Test WgvpnConnSensor check peer activity', function(){
       })();
     });
 
-    afterEach((done) => {(async() => {
+    after((done) => {(async() => {
       for (let delkey of this.todelete) {
         await rclient.delAsync(delkey);
       }
