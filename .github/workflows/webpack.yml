@@ -49,6 +49,7 @@ jobs:
       - run: $(yarn global bin)/webpack-cli -c .webpack/config_mon.js
       - run: bash .webpack/prep-env.sh
       - run: npm run coverage | tee coverage/summary.txt
+        timeout-minutes: 10
       - name: Archive code coverage results
         uses: actions/upload-artifact@v4
         with:
