@@ -127,6 +127,7 @@ describe.skip('Test AlarmManager2', function(){
   before((done) => {
     (
       async() => {
+        await fc.enableDynamicFeature('msp_sync_alarm');
         await fc.syncDynamicFeatures();
         this.extdata = await rclient.getAsync("ext.guardian.data");
         await rclient.setAsync("ext.guardian.data", "{\"config\":{\"alarms\":{\"apply\":{\"default\":{\"state\":\"ready\",\"timeout\":1800},\"large_upload\":{\"state\":\"pending\"},\"large_upload_2\":{\"state\":\"pending\"}}}}}");
@@ -152,7 +153,6 @@ describe.skip('Test AlarmManager2', function(){
   });
 
   it('should create alarm', async() => {
-    await fc.enableDynamicFeature('msp_sync_alarm');
     expect(am2.isAlarmSyncMspEnabled()).to.be.true;
 
     const alm0 = am2.jsonToAlarm({type: 'ALARM_WEAK_PASSWORD'});

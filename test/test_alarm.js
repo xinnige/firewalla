@@ -32,10 +32,10 @@ describe('Test localization', function(){
     it('test customized security by msp', async() => {
         const alarm = am2._genAlarm({"p.event.ts":"1721710424.77783","p.device.ip":"192.168.3.124","p.msp.decision":"create","device":"20:6D:31:61:CC:24","type":"customized_security","p.dest.ip":"52.88.2.1","p.device.name":"Janie AP",
             "p.utag.names":[{"uid":"6","name":"Janie"}],"p.utag.ids":["6"],"p.dtag.names":[{"uid":"44","name":"desktop"}],"p.dtag.ids":["44"],"p.tag.ids":["7"],"alarmTimestamp":"1721710545.902","p.showMap":"false","timestamp":"1721710545.901",
-            "p.device.mac":"20:6D:31:61:CC:24","p.description":"intel:alarm:20:6D:31:61:CC:24:fwdev.fake.io","p.dest.name":"fwdev.fake.io","aid":"24816","p.event.timestampTimezone":"12:53 PM","p.device.type":"Firewalla AP","p.dest.port":"443",
+            "p.device.mac":"20:6D:31:61:CC:24","p.description":"intel:alarm:20:6D:31:61:CC:24:fwdev.fake.io","p.dest.name":"fwdev.fake.io","aid":"24816","p.device.type":"Firewalla AP","p.dest.port":"443",
             "p.protocol":"tcp","p.device.id":"20:6D:31:61:CC:24","state":"active"});
         expect(alarm.localizedNotificationContentKey()).to.be.equal("notif.content.ALARM_CUSTOMIZED_SECURITY.user");
-        expect(alarm.localizedNotificationContentArray()).to.be.eql(['Janie AP','fwdev.fake.io','12:53 PM','Janie']);
+        expect(alarm.localizedNotificationContentArray()).to.be.eql(['Janie AP','fwdev.fake.io',alarm['p.event.timestampTimezone'],'Janie']);
     });
 });
 
