@@ -518,7 +518,9 @@ class InternalScanSensor extends Sensor {
     if (!result)
       return {};
     if (_.has(result, "tasks"))
-      result.tasks = JSON.parse(result.tasks);
+      try {
+      result.tasks = JSON.parse(result.tasks)
+      } catch(err) {};
     if (_.has(result, "lastCompletedScanTs"))
       result.lastCompletedScanTs = Number(result.lastCompletedScanTs);
 
@@ -1006,7 +1008,8 @@ class InternalScanSensor extends Sensor {
 
     // prepare extra configs in advance (http-form-brute)
     const data = await rclient.hgetAsync('sys:config', 'weak_password_scan');
-    const extraConfig = JSON.parse(data);
+    let extraConfig;
+    try { extraConfig = JSON.parse(data) } catch (err) {};
 
     // 1. compose default userdb/passdb (NO apply extra configs)
     const defaultCmds = await this._genNmapCmd_default(ipAddr, port, scripts);
@@ -1059,7 +1062,8 @@ class InternalScanSensor extends Sensor {
           }
           continue;
         }
-        let output = JSON.parse(result);
+        let output;
+        try { output = JSON.parse(result) } catch (err) {};
         let findings = null;
         if (nmapCmd.bruteScript.scriptName == "redis-info") {
           findings = _.get(output, `nmaprun.host.ports.port.service.version`, null);

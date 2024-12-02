@@ -15,9 +15,12 @@
 
 const log = require('../net2/logger.js')(__filename);
 const Sensor = require('./Sensor.js').Sensor;
+const fs = require('fs');
+const fsp = require('fs').promises;
 const platformLoader = require('../platform/PlatformLoader.js');
 const platform = platformLoader.getPlatform();
 const extensionManager = require('./ExtensionManager.js');
+const f = require('../net2/Firewalla.js');
 const sysManager = require('../net2/SysManager.js');
 const exec = require('child-process-promise').exec;
 const CronJob = require('cron').CronJob;
@@ -81,8 +84,11 @@ class InternetSpeedtestPlugin extends Sensor {
       if (this.running) {
         // check running job
         const result = await this.waitRunningResult(msgid);
-        if (result) {
+        if (result && result != -1) {
           return {result};
+        }
+        if (result === -1) {
+          throw {msg: "Cannot run speedtest at the moment, please try again later", code: 429};
         }
         throw {msg: "Another speed test is still running", code: 429};
       }
@@ -114,7 +120,9 @@ class InternetSpeedtestPlugin extends Sensor {
                 dnsServers = wanIntf.dns;
             }
           }
-
+          if (!await this._bincheck()){
+            throw {msg: `Cannot run speedtest at the moment. Please try again later`, code: 400};
+          }
           let vendor = data.vendor || undefined;
           let result;
           if (!vendor) {
@@ -134,6 +142,8 @@ class InternetSpeedtestPlugin extends Sensor {
           this.setJobResult(msgid, result); // cache recent result;
           return {result};
         } catch (err) {
+          // cache error run
+          this.runningCache.set(msgid, {state: -1});
           throw {msg: err.msg || err.message, code: err.code || 500};
         } finally {
           this.running = false;
@@ -172,11 +182,15 @@ class InternetSpeedtestPlugin extends Sensor {
   }
 
   async getJobResult(msgid, timeout=90000) {
-    await InternetSpeedtestPlugin.waitFor( _ => this.getJobState(msgid) === 3, timeout).catch((err) => {});
+    await InternetSpeedtestPlugin.waitFor( _ => [-1, 3].includes(this.getJobState(msgid)), timeout).catch((err) => {log.warn("error to wait for running speedtest,", err.message)});
     const jobState = this.runningCache.get(msgid);
-    if (jobState) {
+    if (jobState && jobState.state === 3) {
       log.debug(`getJobResult msgid ${msgid}`, jobState.result);
       return jobState.result;
+    }
+
+    if (jobState && jobState.state === -1) {
+      return -1;
     }
     log.warn(`getJobResult timeout msgid ${msgid}`);
     return null;
@@ -415,6 +429,20 @@ class InternetSpeedtestPlugin extends Sensor {
         return {vendor: vendor, result: vendorResultMap[vendor]};
     }
     return {};
+  }
+
+  async _bincheck() {
+    // check remote assets
+    await exec(`timeout 90 ${f.getFirewallaHome()}/scripts/update_assets.sh speedtest`).catch( (err) => {log.error("Failed to check asset speedtest", err.message); return false});
+    // recheck results
+    if (! await fsp.access(cliBinaryPath, fs.constants.F_OK).then(() => true).catch((err) => false)) {
+      log.warn("speedtest binary not exist");
+      return false;
+    }
+    const current = await exec(`sha256sum ${cliBinaryPath} | awk '{print $1}'`).then((result) => result.stdout.trim()).catch((err) => {return "-1"});
+    const expect = await rclient.getAsync(cliBinaryPath+'.sha256');
+    log.debug(`speedtest bincheck expect ${current} == ${expect}`);
+    return current == expect;
   }
 
   async runSpeedTest(bindIP, dnsServers, serverId, noUpload = false, noDownload = false, vendor = "mlab", extraOpts = {}) {
