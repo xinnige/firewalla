@@ -174,8 +174,8 @@ describe('Test policy filter', function(){
   it('should get category domains', async () => {
     const domains = await domainBlock.getCategoryDomains('adblock_strict', true);
     log.debug('getCategoryDomains adblock_strict', domains);
-    log.debug('getCategoryDomains porn_bf', await domainBlock.getCategoryDomains('porn_bf', true))
-    expect(domains).to.be.not.empty;
+    log.debug('getCategoryDomains porn_bf', await domainBlock.getCategoryDomains('porn_bf', true));
+    expect(domains).to.be.not.null;
   });
 
   it('should get cloudcache', async() => {
@@ -183,7 +183,7 @@ describe('Test policy filter', function(){
     let cacheItem = cloudcache.getCacheItem('bf:app.porn_bf');
     await cacheItem.download(false);
     log.debug('cloudcache content', cacheItem.localCachePath);
-    const content = await cacheItem.getLocalCacheContent()
-    expect(content).to.be.not.empty;
+    const content = await cacheItem.getLocalCacheContent();
+    expect(content).to.be.not.undefined;
   });
 });

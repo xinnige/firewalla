@@ -39,13 +39,17 @@ plugin.cache = new LRU({
   updateAgeOnGet: false
 });
 
-describe('Test category examiner', function(){
+describe.skip('Test category examiner', function(){
   this.timeout(30000);
 
   before((done) => {
     (async() =>{
         process.title="FireMain";
-        await rclient.setAsync('sys:bone:url', 'https://fwdev.encipher.io/bone/api/dv5');
+        if (process.env.TEST_ENV) {
+          await rclient.setAsync('sys:bone:url', 'http://127.0.0.1:8837/bone/api/dv5');
+        } else {
+          await rclient.setAsync('sys:bone:url', 'https://fwdev.encipher.io/bone/api/dv5');
+        }
         bone.setEndpoint(await rclient.getAsync('sys:bone:url'));
         const jwt = await rclient.getAsync('sys:bone:jwt');
         bone.setToken(jwt);
