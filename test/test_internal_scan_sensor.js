@@ -575,7 +575,7 @@ describe('Test scan hosts', function(){
     expect(this.plugin.featureOn).to.be.false;
   });
 
-  it.skip('should get scan results', async() => {
+  it('should get scan results', async() => {
     let result = await this.plugin.getScanResult();
     log.debug('get scan result', result);
     // expect(Object.keys(result.tasks).length).to.be.greaterThan(1);
