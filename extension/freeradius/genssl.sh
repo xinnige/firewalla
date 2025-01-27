@@ -10,11 +10,13 @@ logger "[$(date)] Generate freeradius ssl certification"
 RADIUS_DIR=${FIREWALLA_HIDDEN}/run/docker/freeradius
 CERT_DIR=/etc/freeradius/certs
 
+sudo rm -rf ${RADIUS_DIR}/ca.cnf
 sudo rm -rf ${RADIUS_DIR}/ca.key
 sudo rm -rf ${RADIUS_DIR}/ca.pem
+cp ${FIREWALLA_HOME}/extension/freeradius/raddb/ca.cnf ${RADIUS_DIR}/ca.cnf
 touch ${RADIUS_DIR}/ca.key
 touch ${RADIUS_DIR}/ca.pem
 
 sudo docker run --rm --volume ${RADIUS_DIR}/ca.cnf:${CERT_DIR}/ca.cnf \
     --volume ${RADIUS_DIR}/ca.key:${CERT_DIR}/ca.key.tmp --volume ${RADIUS_DIR}/ca.pem:${CERT_DIR}/ca.pem.tmp \
-    freeradius/freeradius-dev:v3.2.x bash -c "cd ${CERT_DIR} && make ca && cp ca.key ca.key.tmp && cp ca.pem ca.pem.tmp"
+    public.ecr.aws/a0j1s2e9/freeradius:v3.2.x bash -c "cd ${CERT_DIR} && make ca && cp ca.key ca.key.tmp && cp ca.pem ca.pem.tmp"
