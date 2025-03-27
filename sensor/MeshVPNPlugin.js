@@ -222,6 +222,7 @@ class MeshVPNPlugin extends Sensor {
       overrideDefaultRoute: false,
       routeDNS: false,
       strictVPN: false,
+      snatDisabled: false,
       serverSubnets: []
     };
     await vpnClient.checkAndSaveProfile(profileConfig);

@@ -50,9 +50,10 @@ class VirtWanGroup {
       this.wans = o.wans;
       this.type = o.type;
       this.strictVPN = o.strictVPN || false;
+      this.snatDisabled = o.snatDisabled || false;
       if (this.type === "primary_standby")
         this.failback = o.failback || false;
-      
+
       this.connState = {};
       this.applyConfig();
       instances[uuid] = this;
@@ -87,6 +88,7 @@ class VirtWanGroup {
     this.wans = o.wans;
     this.type = o.type;
     this.strictVPN = o.strictVPN || false;
+    this.snatDisabled = o. snatDisabled || false;
     if (this.type === "primary_standby")
       this.failback = o.failback || false;
     else

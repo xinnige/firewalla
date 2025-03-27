@@ -306,6 +306,10 @@ class VPNClient {
     const localIP6 = await this._getLocalIP6();
     const intf = this.getInterfaceName();
     const snatNeeded = await this.isSNATNeeded();
+    if (settings.snatDisabled) {
+      await exec(iptables.wrapIptables(`sudo iptables -w -t nat -m set --match-set ${getNetIpsetName(this.profileId, 4)} dst -j RETURN`)).catch((err) => {});
+      await exec(iptables.wrapIptables(`sudo ip6tables -w -t nat -m set --match-set ${getNetIpsetName(this.profileId, 6)} dst -j RETURN`)).catch((err) => {});
+    }
     if (snatNeeded) {
       await exec(iptables.wrapIptables(`sudo iptables -w -t nat -A FW_POSTROUTING -o ${intf} -j MASQUERADE`)).catch((err) => {});
       await exec(iptables.wrapIptables(`sudo ip6tables -w -t nat -A FW_POSTROUTING -o ${intf} -j MASQUERADE`)).catch((err) => {});
@@ -736,6 +740,7 @@ class VPNClient {
       serverSubnets: [],
       overrideDefaultRoute: true,
       routeDNS: true,
+      snatDisabled: false,
       strictVPN: false
     }; // default settings
     const mergedSettings = Object.assign({}, defaultSettings, settings);
@@ -754,6 +759,7 @@ class VPNClient {
     let settings = {
       serverSubnets: [],
       overrideDefaultRoute: true,
+      snatDisabled: false,
       routeDNS: true,
       strictVPN: false
     }; // default settings
@@ -952,6 +958,10 @@ class VPNClient {
     await VPNClient.ensureCreateEnforcementEnv(this.profileId);
     await vpnClientEnforcer.flushVPNClientRoutes(intf);
     await vpnClientEnforcer.removeVPNClientIPRules(intf);
+    if (this.settings.snatDisabled) {
+      await exec(iptables.wrapIptables(`sudo iptables -w -t nat -D -m set --match-set ${getNetIpsetName(this.profileId, 4)} dst -j RETURN`)).catch((err) => {});
+      await exec(iptables.wrapIptables(`sudo ip6tables -w -t nat -D -m set --match-set ${getNetIpsetName(this.profileId, 6)} dst -j RETURN`)).catch((err) => {});
+    }
     await exec(iptables.wrapIptables(`sudo iptables -w -t nat -D FW_POSTROUTING -o ${intf} -j MASQUERADE`)).catch((err) => {});
     await exec(iptables.wrapIptables(`sudo ip6tables -w -t nat -D FW_POSTROUTING -o ${intf} -j MASQUERADE`)).catch((err) => {});
     await this.loadSettings();
