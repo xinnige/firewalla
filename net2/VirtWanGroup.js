@@ -542,6 +542,14 @@ class VirtWanGroup {
         default:
       }
     }
+
+    // apply options to vpn profile settings
+    for (const profileId of this.connState) {
+      let settings = VPNClient.getInstance(profileId).loadSettings();
+      settings = Object.assign({}, settings, {snatDisabled: this.snatDisabled});
+      VPNClient.getInstance(profileId).saveSettings(settings);
+    }
+
   }
 
   // this function is invoked when the virtual wan group is created or initialized in a process's lifecycle
