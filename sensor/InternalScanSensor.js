@@ -531,11 +531,30 @@ class InternalScanSensor extends Sensor {
     if (maxResult > 0) {
       result.tasks = this._limitResult(result.tasks, maxResult);
     }
+    result.tasks = this._maskResult(result.tasks);
     return result;
   }
 
   _limitResult(tasks, maxResult) {
     return Ranges.limitInternalScanResult(tasks, maxResult);
+  }
+
+  _maskResult(tasks) {
+    for (const key in tasks) {
+      const result = tasks[key];
+      if (_.isArray(result.results)) {
+        for (const hostinfo of result.results) {
+          if (_.isObject(hostinfo)) {
+            for (const r of hostinfo.result) {
+              if (r.password == "<empty>") {
+                r.password = ""
+              }
+            }
+          }
+        }
+      }
+    }
+    return tasks
   }
 
   async getScanHosts(policy) {

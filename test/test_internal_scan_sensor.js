@@ -331,9 +331,7 @@ async function _setTargetPolicy(type, target, state) {
   log.warn(`fail to set policy, ${type} ${target} is not found`);
 }
 
-
 const cronPolicy = {cron:"10 10 * * *",state:true,includeVPNNetworks:false};
-
 
 describe('Test applyPolicy', function(){
   this.timeout(10000);
@@ -626,5 +624,11 @@ describe('Test scan hosts', function(){
       ], overlimit:true},
     });
 
+  });
+
+  it("should mask result password", () => {
+    const tasks = {"0.0.0.0":{"results":[{"result":[{"password":"<empty>","username":"admin","protocol":"tcp","port":80,"serviceName":"HTTP"}]}]}};
+    this.plugin._maskResult(tasks);
+    expect(tasks["0.0.0.0"].results[0].result[0].password).to.be.empty;
   });
 });

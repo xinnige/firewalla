@@ -756,6 +756,8 @@ module.exports = class HostManager extends Monitorable {
   }
 
   async weakPasswordDataForInit(json) {
+    const internalScanSensor = await sensorLoader.getSensor('InternalScanSensor');
+
     const result = await rclient.hgetallAsync(Constants.REDIS_KEY_WEAK_PWD_RESULT);
     if (!result)
       return {};
@@ -771,6 +773,7 @@ module.exports = class HostManager extends Monitorable {
         result.tasks = latestTasks;
       }
       result.tasks = Ranges.limitInternalScanResult(result.tasks);
+      result.tasks = internalScanSensor._maskResult(result.tasks);
     }
     json.weakPasswordScanResult = result;
   }
