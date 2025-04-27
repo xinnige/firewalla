@@ -43,6 +43,7 @@ const ruleScheduler = require('../extension/scheduler/scheduler.js')
 
 const util = require('util');
 const Constants = require('../net2/Constants.js');
+const { stripObject } = require('../util/util.js');
 
 module.exports = class {
   constructor() {
@@ -542,7 +543,11 @@ module.exports = class {
         matchedExceptions.push(exception);
       }
     }
-
     return _.uniqWith(matchedExceptions.map((exception) => exception.eid), _.isEqual);
+  }
+
+  stripRule(exception) {
+    const filterFields = ["category"];
+    return stripObject(exception, [], filterFields);
   }
 };
