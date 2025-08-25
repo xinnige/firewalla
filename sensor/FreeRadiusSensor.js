@@ -85,7 +85,8 @@ class FreeRadiusSensor extends Sensor {
   async run() {
     this.featureOn = false;
     this._policy = await this.loadPolicyAsync();
-    this._options = await this.loadOptionsAsync();
+    const opts = this._policy["0.0.0.0"] && this._policy["0.0.0.0"].options || {};
+    this._options = Object.assign({}, await this.loadOptionsAsync(), opts);
 
     // sync ssid sta mapping once every 20 seconds to ensure consistency in case sta update message is missing somehow
     setInterval(async () => {
@@ -231,7 +232,7 @@ class FreeRadiusSensor extends Sensor {
     this._policy = await this.loadPolicyAsync();
     this._options = await this.loadOptionsAsync();
     log.debug("freeradius policy", freeradius.mask(JSON.stringify(this._policy)));
-    freeradius.prepare(); // prepare in background
+    freeradius.prepare(this._options); // prepare in background
   }
 
   async globalOff() {
