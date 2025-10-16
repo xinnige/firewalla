@@ -30,6 +30,7 @@ const util = require('../../util/util.js');
 const dockerDir = `${f.getRuntimeInfoFolder()}/docker/freeradius`
 const configDir = `${f.getUserConfigFolder()}/freeradius`
 const logDir = `${f.getUserHome()}/.forever/freeradius`
+const certsDir = `${f.getHiddenFolder()}/certs/freeradius`
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -430,12 +431,36 @@ class FreeRadius {
         log.info("outdated image removed", currentImage);
       }
 
+      await this.cleanupOldImages();
       return true;
 
     } catch (err) {
       log.error("Failed to check for new image,", err.message);
       return false;
     }
+  }
+
+
+  async cleanupImages() {
+    await exec(`sudo docker images public.ecr.aws/a0j1s2e9/freeradius --format "{{.Tag}}" | xargs -r sudo docker rmi`).then(r => r.stdout.trim()).catch((e) => {
+      log.warn("Failed to remove freeradius all images,", e.message);
+      return [];
+    });
+  }
+
+  async cleanupOldImages() {
+    // remove dangling images
+    log.info("Cleaning up dangling images...");
+    const danglingImages = await exec(`sudo docker images public.ecr.aws/a0j1s2e9/freeradius -f "dangling=true" -q`).then(r => r.stdout.trim()).catch((e) => {
+      log.warn("Failed to get dangling images,", e.message);
+      return [];
+    });
+    if (danglingImages.length > 0) {
+      await exec(`sudo docker rmi ${danglingImages.join(" ")}`).catch((e) => {
+        log.warn("Failed to remove dangling images,", e.message);
+      });
+    }
+    log.info("dangling images removed", danglingImages.join(" "));
   }
 
   // get clients from frcc
@@ -530,7 +555,11 @@ class FreeRadius {
     if (options.image_tag) {
       return options.image_tag;
     }
-    return f.isDevelopmentVersion() ? "dev" : "latest";
+    const release = f.getReleaseType();
+    if (release === "dev" || release === "unknown") {
+      return "dev";
+    }
+    return release;
   }
 
   async _checkImage(options) {
@@ -679,6 +708,46 @@ class FreeRadius {
     } catch (err) {
       log.warn("Failed to stop radius-server,", err.message);
     }
+  }
+
+  async resetServer(options = {}) {
+    // stop server
+    await this.stopServer(options);
+
+    await this.cleanupConfig(options);
+    await this.cleanupOldImages();
+
+    if (this.featureOn) {
+      const imageUpdated = await this.upgradeImage(options);
+      if (imageUpdated) {
+        await this.startServer(options);
+      }
+    } else {
+      await this.cleanupImages();
+    }
+    log.info("Freeradius server is reset successfully.");
+    return true;
+  }
+
+  async cleanupConfig(options = {}) {
+    // cleanup certificates
+    log.info("Cleaning up freeradius certificates...");
+    await exec(`sudo rm -rf ${certsDir}/*`).catch((e) => {
+      log.warn("Failed to cleanup certificates,", e.message);
+    });
+
+    // cleanup config
+    log.info("Cleaning up freeradius config...");
+    await exec(`sudo rm -rf ${configDir}/*`).catch((e) => {
+      log.warn("Failed to cleanup freeradius config,", e.message);
+    });
+
+    // cleanup docker compose folder
+    log.info("Cleaning up freeradius docker files...");
+    await exec(`sudo rm -rf ${dockerDir}/*`).catch((e) => {
+      log.warn("Failed to cleanup docker compose folder,", e.message);
+    });
+    log.info("Finished to cleanup freeradius server.");
   }
 
   async _reconfigServer(target, options = {}) {
