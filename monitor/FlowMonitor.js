@@ -937,6 +937,7 @@ module.exports = class FlowMonitor {
     log.info(`Cyber alarm for domain '${domain}' has been generated`, alarm);
 
     try {
+      alarmManager2.applyConfig(alarm, ['state']);
       await alarmManager2.checkAndSaveAsync(alarm);
     } catch (err) {
       if (err.code === 'ERR_DUP_ALARM' || err.code === 'ERR_BLOCKED_BY_POLICY_ALREADY' || err.code === 'ERR_COVERED_BY_EXCEPTION') {
