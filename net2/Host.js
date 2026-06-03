@@ -66,7 +66,7 @@ const Monitorable = require('./Monitorable');
 const Constants = require('./Constants.js');
 
 const AsyncLock = require('../vendor_lib/async-lock');
-const lock = new AsyncLock(); 
+const lock = new AsyncLock();
 
 const iptool = require('ip');
 
@@ -96,6 +96,7 @@ class Host extends Monitorable {
       // Host object should only be created after initial setup of iptables to avoid racing condition
       if (f.isMain() && !noEnvCreation) (async () => {
         this.spoofing = false;
+        await this.initAutoGroup();
 
         await Host.ensureCreateEnforcementEnv(this.o.mac)
 
@@ -249,6 +250,96 @@ class Host extends Monitorable {
     }
 
     return super.setPolicyAsync(name, policy, syncToMsp)
+  }
+
+  // options: { dvlanId: dvlanId, wpax: wpax }
+  async setAutoGroupAsync(tag, ssid, options = {}) {
+    log.info(`Setting auto group for ${this.o.mac}`, tag, ssid, options);
+    await hostTool.setWirelessAutoGroup(this.o.mac, String(tag), ssid, options);
+    this.o.autoGroup = JSON.stringify({
+      tag: tag,
+      ssid: ssid,
+      ts: Date.now(),
+      ...options,
+    });
+    return await this.save(["autoGroup"]);
+  }
+
+  async resetAutoGroupAsync() {
+    log.info(`Resetting auto group for ${this.o.mac}`);
+    await hostTool.resetWirelessAutoGroup(this.o.mac);
+    this.o.autoGroup = null;
+    return await this.save(["autoGroup"]);
+  }
+
+  async initAutoGroup() {
+    if (this.o.autoGroup)
+      return;
+    const autoGroup = await hostTool.getWirelessAutoGroup(this.o.mac);
+    if (!autoGroup)
+      return;
+    try {
+      const parsed = JSON.parse(autoGroup);
+      if (!parsed || !parsed.tag || !parsed.ssid)
+        return;
+      this.o.autoGroup = autoGroup;
+      await this.save(["autoGroup"]);
+    } catch (err) {
+      log.warn(`Invalid wireless auto group cache for ${this.o.mac}`, err.message);
+    }
+  }
+
+  // 1. if not connected (no staStatus), reset autoGroup after a short grace to prevent flapping
+  // 2. if connected, reset if ssid no longer matches
+  // 3. if connected on the same ssid but the dynamic vlan no longer matches
+  async getHostAutoGroup(staStatus) {
+    if (!this.o.autoGroup)
+      return null;
+    let autoGroup = null;
+    try {
+      autoGroup = JSON.parse(this.o.autoGroup);
+    } catch (err) {
+      log.warn(`Invalid autoGroup json for ${this.o.mac}`, err.message);
+      await this.resetAutoGroupAsync();
+      return null;
+    }
+    if (!autoGroup || !autoGroup.tag || !autoGroup.ssid) {
+      await this.resetAutoGroupAsync();
+      return null;
+    }
+
+    if (!staStatus) {
+      if (!autoGroup.ts || autoGroup.ts < Date.now() - 10000) { // 10s grace window
+        await this.resetAutoGroupAsync();
+        return null;
+      }
+      return autoGroup;
+    }
+
+    // connected but on a different ssid, reset autoGroup
+    if (autoGroup.ssid && staStatus.ssid && staStatus.ssid !== autoGroup.ssid) {
+      await this.resetAutoGroupAsync();
+      return null;
+    }
+
+    // // check if tag matches, "tags": ["14"] means tag 14
+    // if (this.o.tags && _.isArray(this.o.tags) && this.o.tags.length > 0 && !this.o.tags.includes(autoGroup.tag)) {
+    //   await this.resetAutoGroupAsync();
+    //   return null;
+    // } else if (!this.o.tags || !_.isArray(this.o.tags) || this.o.tags.length === 0) {
+    //   await this.resetAutoGroupAsync();
+    //   return null;
+    // }
+
+    return autoGroup;
+  }
+
+  async touchAutoGroup(autoGroup) {
+    if (!autoGroup)
+      return;
+    autoGroup.ts = Date.now();
+    this.o.autoGroup = JSON.stringify(autoGroup);
+    await this.save(["autoGroup"]);
   }
 
   keepalive() {
@@ -1097,6 +1188,14 @@ class Host extends Monitorable {
     // undefined fields won't be serialized in HTTP response, don't bother checking
     for (const f of pickAssignment) {
       json[f] = this.o[f]
+    }
+
+    if (this.o.autoGroup) {
+      try {
+        json.autoGroup = JSON.parse(this.o.autoGroup);
+      } catch (err) {
+        log.warn(`Invalid autoGroup json for ${this.o.mac}`, err.message);
+      }
     }
 
     const preferredBName = getPreferredBName(this.o)
