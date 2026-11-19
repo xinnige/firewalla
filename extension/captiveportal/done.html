@@ -1,0 +1,12 @@
+<h2>You're in</h2>
+<p>Wi-Fi reconnects once and then the Internet works, at most <b id="left">{{wait}}</b> seconds.<br>
+No need to tap OK again.</p>
+<script>
+  var left = {{wait}};
+  var el = document.getElementById('left');
+  var t = setInterval(function () {
+    left = Math.max(0, left - 1);
+    el.textContent = left;
+    if (left === 0) clearInterval(t);
+  }, 1000);
+</script>
