@@ -63,6 +63,7 @@ class APCMsgSensor extends Sensor {
     this.ssidVlanGroupMap = {};
     this.wpaEntSSIDs = [];
     this.macAuthSSIDs = [];
+    this.loadedSSIDs = [];
     this.enforcedRules = {};
     this.policyInitialized = false;
     sl.initSingleSensor("ACLAuditLogPlugin").then((r) => {this.aclAuditLogPlugin = r}).catch((err) => {
@@ -479,6 +480,11 @@ class APCMsgSensor extends Sensor {
           log.debug(`mac ${mac} ssid ${ssid} profile ${uuid} is in wpa2 or wpa3 enterprise mode, skip updating host ssid`);
           return;
         }
+        // whether a profile uses MAC auth is unknown until loaded, the next refresh assigns its group
+        if (!this.loadedSSIDs.includes(uuid)) {
+          log.debug(`mac ${mac} ssid ${ssid} profile ${uuid} is not loaded yet, skip updating host ssid`);
+          return;
+        }
         await this.updateStationGroup(mac.toUpperCase(), uuid, ssid, _.get(msg, ["station", "dvlanVlanId"]),
           _.get(msg, ["station", "innerSsid"]) || ssid);
       }
@@ -491,6 +497,7 @@ class APCMsgSensor extends Sensor {
     const profiles = Object.entries(ssidProfiles);
     this.wpaEntSSIDs = profiles.filter(item => item[1].encryption === "wpa2" || item[1].wpa3 === true).map(item => item[0]);
     this.macAuthSSIDs = profiles.filter(item => _.get(item[1], ["radius", "macAuth"]) === true).map(item => item[0]);
+    this.loadedSSIDs = profiles.map(item => item[0]);
   }
 
   // group of a station on a psk ssid, for both joins and the periodic refresh:

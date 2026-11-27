@@ -329,16 +329,21 @@ class FreeRadiusSensor extends Sensor {
     const mabLock = _.isObject(autoGroup) && autoGroup.tag && autoGroup.auth === "mab" &&
       (!autoGroup.ssid || autoGroup.ssid === ssid) ? autoGroup : null;
     const record = await this._getRadiusRecord(mac, ssid);
-    // a lock not from a redis record (a file entry, or written before src was recorded) is what freeradius accepted
-    const acceptedLock = mabLock && mabLock.src !== "redis" ? mabLock : null;
+    const fromRedis = mabLock && mabLock.src === "redis";
+    let useLock = false;
+    if (mabLock && mabLock.src && !fromRedis)
+      useLock = true; // a file entry freeradius accepted
+    else if (record && (record.keyid || !mabLock || fromRedis))
+      useLock = false; // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
+    else if (mabLock && (!fromRedis || mabLock.keyid))
+      useLock = true; // written before src was recorded, or a PPSK key whose record expired while still connected
     let tagUid = null;
     let options = { auth: "mab", src: "redis" };
-    if (acceptedLock && (acceptedLock.src || !record || !record.keyid)) {
-      const { tag, userTag, ts, ssid: _ssid, ...rest } = acceptedLock;
+    if (useLock) {
+      const { tag, userTag, ts, ssid: _ssid, ...rest } = mabLock;
       tagUid = userTag || tag;
       options = rest;
     } else if (record) {
-      // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
       tagUid = record.tag;
       if (record.keyid)
         options.keyid = record.keyid;
