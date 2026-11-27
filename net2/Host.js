@@ -388,7 +388,7 @@ class Host extends Monitorable {
   }
 
   // 0. reset if its group no longer exists
-  // 1. if not connected (no staStatus), keep autoGroup until expire (30 days for mab, 10 minutes otherwise)
+  // 1. if not connected (no staStatus), keep autoGroup until expire (30 days for mab without a PPSK key, 10 minutes otherwise)
   // 2. if a dot1x group, reset only when the station is no longer 802.1x authenticated
   // 3. otherwise (ppsk/default/mab), reset if connected on a different ssid, mab may have no ssid
   async getHostAutoGroup(staStatus, recheck = true) {
@@ -410,8 +410,9 @@ class Host extends Monitorable {
     if (!staStatus) {
       // ts advances on join, Access-Accept and while fwapc sees the station, so an old ts
       // means the device left Firewalla Wi-Fi/RADIUS; rejoining sets it again.
-      // mab keeps 30 days: an Access-Accept without a tag undoes the group only while autoGroup marks it as mab's
-      const maxAge = autoGroup.auth === "mab" ? 2592000 : 600;
+      // mab keeps 30 days: an Access-Accept without a tag undoes the group only while autoGroup marks it as mab's.
+      // A PPSK key (keyid) is Wi-Fi only, so its lock expires like other wifi groups
+      const maxAge = autoGroup.auth === "mab" && !autoGroup.keyid ? 2592000 : 600;
       if (!autoGroup.ts || autoGroup.ts < Date.now() - maxAge * 1000)
         return reset();
       return autoGroup;

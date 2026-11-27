@@ -484,6 +484,9 @@ class FreeRadiusSensor extends Sensor {
           const vlan = msg.vlan || msg.vlan_id;
           if (vlan)
             options.dvlanId = String(vlan);
+          // a PPSK key's group expires off Wi-Fi like other wifi groups
+          if (msg.keyid)
+            options.keyid = String(msg.keyid);
           if (!tagUid) {
             log.info(`no tag in mab auth event, remove mab auto group of ${mac}`);
             await this.removeMabAutoGroup(mac);
