@@ -348,12 +348,6 @@ class APCMsgSensor extends Sensor {
       });
       if (_.isEmpty(ssidStatus))
         return;
-      // the hidden ssid an OWE transition station authenticated on, for RADIUS lookups
-      const staStatus = await fwapc.getAllSTAStatus(true).catch((err) => {
-        log.warn(`Failed to get STA status from fwapc`, err.message);
-        return null;
-      });
-
       const tags = await TagManager.getPolicyTags("ssidPSK");
       const ssidVlanGroupMap = {};
       const ssidGroupMap = {};
@@ -380,6 +374,11 @@ class APCMsgSensor extends Sensor {
       const templates = _.get(config, "assets_template");
       const ssidProfiles = _.get(config, "profile");
       this._loadSSIDAuthModes(ssidProfiles);
+      // the hidden ssid an OWE transition station authenticated on, only needed for RADIUS lookups
+      const staStatus = _.isEmpty(this.macAuthSSIDs) ? null : await fwapc.getAllSTAStatus(true).catch((err) => {
+        log.warn(`Failed to get STA status from fwapc`, err.message);
+        return null;
+      });
 
       for (const uid of Object.keys(assets)) {
         const templateId = _.get(assets, [uid, "templateId"]);
@@ -423,11 +422,8 @@ class APCMsgSensor extends Sensor {
           for (const mac of status[key]) {
             const upperMac = mac.toUpperCase();
             const sta = _.get(staStatus, upperMac);
-            // without its station status the ssid a station authenticated on is unknown, keep its group this round
-            if (!sta && this.macAuthSSIDs.includes(uuid))
-              continue;
-            // older fwapc reports the hidden ssid as ssid
-            const radiusSSID = sta && (sta.innerSsid || sta.ssid) || ssid;
+            // older fwapc reports the hidden ssid as ssid; null when unknown
+            const radiusSSID = sta ? sta.innerSsid || sta.ssid : null;
             await this.updateStationGroup(upperMac, uuid, ssid, vid, radiusSSID);
           }
         }
@@ -502,8 +498,8 @@ class APCMsgSensor extends Sensor {
 
   // group of a station on a psk ssid, for both joins and the periodic refresh:
   // its PPSK wifi vlan's group, else on a MAC auth ssid the RADIUS group, else without a vlan the ssid default group.
-  // radiusSSID: the ssid the station authenticated on, the hidden one of an OWE transition profile
-  async updateStationGroup(mac, uuid, ssid, dvlanId, radiusSSID = ssid) {
+  // radiusSSID: the ssid the station authenticated on, the hidden one of an OWE transition profile, null if unknown
+  async updateStationGroup(mac, uuid, ssid, dvlanId, radiusSSID) {
     const vlanTag = dvlanId && this.ssidVlanGroupMap[`${uuid}::${dvlanId}`];
     if (vlanTag) {
       await this.updateHostSSID(mac, uuid, vlanTag.getUniqueId(), ssid, dvlanId);
@@ -518,6 +514,9 @@ class APCMsgSensor extends Sensor {
       await fallback();
       return;
     }
+    // without the ssid it authenticated on its RADIUS group can't be checked, keep it this round
+    if (!radiusSSID)
+      return;
     if (await radius.applyStationGroup(mac, radiusSSID, dvlanId, fallback))
       await this.updateHostSSID(mac, uuid, null, ssid, null, true);
   }
