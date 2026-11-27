@@ -365,11 +365,16 @@ class Host extends Monitorable {
 
   // FireApi's host object can be a minute old: reset only if the stored lock is still this one,
   // otherwise load the stored one. Returns true if reset
-  async _resetAutoGroupIfStored(autoGroup) {
-    let stored = null;
+  async _getStoredAutoGroup() {
     try {
-      stored = JSON.parse(await rclient.hgetAsync(hostTool.getMacKey(this.o.mac), "autoGroup"));
-    } catch (err) {}
+      return JSON.parse(await rclient.hgetAsync(hostTool.getMacKey(this.o.mac), "autoGroup"));
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async _resetAutoGroupIfStored(autoGroup) {
+    const stored = await this._getStoredAutoGroup();
     if (_.isObject(stored) && (String(stored.tag) !== String(autoGroup.tag) ||
       (stored.userTag || "") !== (autoGroup.userTag || "") || stored.ts !== autoGroup.ts)) {
       this.o.autoGroup = stored;
@@ -436,11 +441,13 @@ class Host extends Monitorable {
     return autoGroup;
   }
 
+  // FireApi's copy can be stale, so only the stored lock's ts is advanced, keeping fields FireMain added since
   async touchAutoGroup(autoGroup) {
-    if (!autoGroup)
+    const stored = await this._getStoredAutoGroup();
+    if (!autoGroup || !_.isObject(stored) || String(stored.tag) !== String(autoGroup.tag))
       return;
-    autoGroup.ts = Date.now();
-    this.o.autoGroup = autoGroup;
+    stored.ts = Date.now();
+    this.o.autoGroup = stored;
     await this.save(["autoGroup"]);
   }
 

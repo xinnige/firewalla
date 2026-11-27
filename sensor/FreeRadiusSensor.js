@@ -329,19 +329,19 @@ class FreeRadiusSensor extends Sensor {
     const mabLock = _.isObject(autoGroup) && autoGroup.tag && autoGroup.auth === "mab" &&
       (!autoGroup.ssid || autoGroup.ssid === ssid) ? autoGroup : null;
     const record = await this._getRadiusRecord(mac, ssid);
+    // a lock not from a redis record (a file entry, or written before src was recorded) is what freeradius accepted
+    const acceptedLock = mabLock && mabLock.src !== "redis" ? mabLock : null;
     let tagUid = null;
-    let options = { auth: "mab" };
-    if (record && record.keyid) {
-      // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
-      tagUid = record.tag;
-      options.keyid = record.keyid;
-    } else if (mabLock) {
-      // the accepted group wins over the record, freeradius may have matched another entry
-      const { tag, userTag, ts, ssid: _ssid, ...rest } = mabLock;
+    let options = { auth: "mab", src: "redis" };
+    if (acceptedLock && (acceptedLock.src || !record || !record.keyid)) {
+      const { tag, userTag, ts, ssid: _ssid, ...rest } = acceptedLock;
       tagUid = userTag || tag;
       options = rest;
     } else if (record) {
+      // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
       tagUid = record.tag;
+      if (record.keyid)
+        options.keyid = record.keyid;
     }
     if (dvlanId)
       options.dvlanId = String(dvlanId);
@@ -548,6 +548,9 @@ class FreeRadiusSensor extends Sensor {
           // a PPSK key's group expires off Wi-Fi like other wifi groups
           if (msg.keyid)
             options.keyid = String(msg.keyid);
+          // "redis" (fwapc's record) or a file entry, a record's group goes once fwapc drops the record
+          if (msg.src)
+            options.src = String(msg.src);
           if (!tagUid) {
             log.info(`no tag in mab auth event, remove mab auto group of ${mac}`);
             await this.removeMabAutoGroup(mac);

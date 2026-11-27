@@ -348,7 +348,7 @@ class APCMsgSensor extends Sensor {
       if (_.isEmpty(ssidStatus))
         return;
       // the hidden ssid an OWE transition station authenticated on, for RADIUS lookups
-      const staStatus = await fwapc.getAllSTAStatus().catch((err) => {
+      const staStatus = await fwapc.getAllSTAStatus(true).catch((err) => {
         log.warn(`Failed to get STA status from fwapc`, err.message);
         return null;
       });
@@ -421,9 +421,12 @@ class APCMsgSensor extends Sensor {
             continue;
           for (const mac of status[key]) {
             const upperMac = mac.toUpperCase();
-            // station status is cached, use it only if it is still on this ssid
             const sta = _.get(staStatus, upperMac);
-            const radiusSSID = sta && sta.ssid === ssid && sta.innerSsid || ssid;
+            // without its station status the ssid a station authenticated on is unknown, keep its group this round
+            if (!sta && this.macAuthSSIDs.includes(uuid))
+              continue;
+            // older fwapc reports the hidden ssid as ssid
+            const radiusSSID = sta && (sta.innerSsid || sta.ssid) || ssid;
             await this.updateStationGroup(upperMac, uuid, ssid, vid, radiusSSID);
           }
         }
