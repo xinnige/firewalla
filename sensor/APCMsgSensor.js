@@ -347,7 +347,7 @@ class APCMsgSensor extends Sensor {
       });
       if (_.isEmpty(ssidStatus))
         return;
-      // ssid each station authenticated on, for RADIUS lookups
+      // the hidden ssid an OWE transition station authenticated on, for RADIUS lookups
       const staStatus = await fwapc.getAllSTAStatus().catch((err) => {
         log.warn(`Failed to get STA status from fwapc`, err.message);
         return null;
@@ -421,7 +421,10 @@ class APCMsgSensor extends Sensor {
             continue;
           for (const mac of status[key]) {
             const upperMac = mac.toUpperCase();
-            await this.updateStationGroup(upperMac, uuid, ssid, vid, _.get(staStatus, [upperMac, "ssid"]) || ssid);
+            // station status is cached, use it only if it is still on this ssid
+            const sta = _.get(staStatus, upperMac);
+            const radiusSSID = sta && sta.ssid === ssid && sta.innerSsid || ssid;
+            await this.updateStationGroup(upperMac, uuid, ssid, vid, radiusSSID);
           }
         }
       }
@@ -473,7 +476,8 @@ class APCMsgSensor extends Sensor {
           log.debug(`mac ${mac} ssid ${ssid} profile ${uuid} is in wpa2 or wpa3 enterprise mode, skip updating host ssid`);
           return;
         }
-        await this.updateStationGroup(mac.toUpperCase(), uuid, ssid, _.get(msg, ["station", "dvlanVlanId"]));
+        await this.updateStationGroup(mac.toUpperCase(), uuid, ssid, _.get(msg, ["station", "dvlanVlanId"]),
+          _.get(msg, ["station", "innerSsid"]) || ssid);
       }
     }).catch((err) => {
       log.error(`Failed to process STA update message: ${msg}`, err.message);
@@ -495,13 +499,17 @@ class APCMsgSensor extends Sensor {
       await this.updateHostSSID(mac, uuid, vlanTag.getUniqueId(), ssid, dvlanId);
       return;
     }
+    const fallback = () => {
+      const defaultTag = !dvlanId && this.ssidGroupMap[uuid];
+      return this.updateHostSSID(mac, uuid, defaultTag && defaultTag.getUniqueId(), ssid, dvlanId);
+    };
     const radius = this.macAuthSSIDs.includes(uuid) && sl.getSensor("FreeRadiusSensor");
-    if (radius && await radius.applyStationGroup(mac, radiusSSID, dvlanId)) {
-      await this.updateHostSSID(mac, uuid, null, ssid, null, true);
+    if (!radius) {
+      await fallback();
       return;
     }
-    const defaultTag = !dvlanId && this.ssidGroupMap[uuid];
-    await this.updateHostSSID(mac, uuid, defaultTag && defaultTag.getUniqueId(), ssid, dvlanId);
+    if (await radius.applyStationGroup(mac, radiusSSID, dvlanId, fallback))
+      await this.updateHostSSID(mac, uuid, null, ssid, null, true);
   }
 
   // keepGroup: only record the wifi join, the group is RADIUS's

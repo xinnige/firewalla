@@ -429,7 +429,8 @@ class Host extends Monitorable {
     }
 
     // connected but on a different ssid, reset autoGroup
-    if (autoGroup.ssid && staStatus.ssid && staStatus.ssid !== autoGroup.ssid)
+    // an OWE transition station's RADIUS group is on the hidden ssid it authenticated on
+    if (autoGroup.ssid && staStatus.ssid && ![staStatus.ssid, staStatus.innerSsid].includes(autoGroup.ssid))
       return reset();
 
     return autoGroup;

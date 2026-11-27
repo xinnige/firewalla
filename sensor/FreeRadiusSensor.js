@@ -309,38 +309,49 @@ class FreeRadiusSensor extends Sensor {
   }
 
   // a station on a MAC auth ssid without a PPSK wifi vlan: MAB puts a PPSK key on the key network's vlan,
-  // not the key's wifi vlan, so its group is RADIUS's. Returns true if a RADIUS group was applied
-  async applyStationGroup(mac, ssid, dvlanId) {
-    if (!this.featureOn || !ssid)
+  // not the key's wifi vlan, so its group is RADIUS's. Otherwise fallback assigns it, under the same
+  // device lock so an Access-Accept can't interleave. Returns true if a RADIUS group was applied
+  async applyStationGroup(mac, ssid, dvlanId, fallback) {
+    if (!this.featureOn || !ssid) {
+      await fallback();
       return false;
+    }
     return this._withDeviceTagLock(mac, async () => {
-      const autoGroup = await this._loadAutoGroup(mac, await hostManager.getHostAsync(mac));
-      const mabLock = _.isObject(autoGroup) && autoGroup.tag && autoGroup.auth === "mab" &&
-        (!autoGroup.ssid || autoGroup.ssid === ssid) ? autoGroup : null;
-      const record = await this._getRadiusRecord(mac, ssid);
-      let tagUid = null;
-      let options = { auth: "mab" };
-      if (record && record.keyid) {
-        // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
-        tagUid = record.tag;
-        options.keyid = record.keyid;
-      } else if (mabLock) {
-        // the accepted group wins over the record, freeradius may have matched another entry
-        const { tag, userTag, ts, ssid: _ssid, ...rest } = mabLock;
-        tagUid = userTag || tag;
-        options = rest;
-      } else if (record) {
-        tagUid = record.tag;
-      }
-      if (dvlanId)
-        options.dvlanId = String(dvlanId);
-      if (tagUid && await this._setDeviceTagByUid(mac, tagUid, ssid, options))
+      if (await this._applyStationGroup(mac, ssid, dvlanId))
         return true;
-      // a lock RADIUS no longer backs is undone like a tagless Access-Accept
-      if (mabLock)
-        await this._removeMabAutoGroup(mac);
+      await fallback();
       return false;
     });
+  }
+
+  async _applyStationGroup(mac, ssid, dvlanId) {
+    const autoGroup = await this._loadAutoGroup(mac, await hostManager.getHostAsync(mac));
+    const mabLock = _.isObject(autoGroup) && autoGroup.tag && autoGroup.auth === "mab" &&
+      (!autoGroup.ssid || autoGroup.ssid === ssid) ? autoGroup : null;
+    const record = await this._getRadiusRecord(mac, ssid);
+    let tagUid = null;
+    let options = { auth: "mab" };
+    if (record && record.keyid) {
+      // fwapc keeps the record on the key in use, also on 2.4G where no Access-Accept comes
+      tagUid = record.tag;
+      options.keyid = record.keyid;
+    } else if (mabLock) {
+      // the accepted group wins over the record, freeradius may have matched another entry
+      const { tag, userTag, ts, ssid: _ssid, ...rest } = mabLock;
+      tagUid = userTag || tag;
+      options = rest;
+    } else if (record) {
+      tagUid = record.tag;
+    }
+    if (dvlanId)
+      options.dvlanId = String(dvlanId);
+    if (tagUid && await this._setDeviceTagByUid(mac, tagUid, ssid, options))
+      return true;
+    // a lock RADIUS no longer backs is undone like a tagless Access-Accept,
+    // by the lock read above since a failed assignment has already cleared the stored one
+    if (mabLock)
+      await this._removeMabAutoGroup(mac, mabLock);
+    return false;
   }
 
   // true if the group is applied, or pending discovery
@@ -408,10 +419,11 @@ class FreeRadiusSensor extends Sensor {
     await this._withDeviceTagLock(mac, () => this._removeMabAutoGroup(mac));
   }
 
-  async _removeMabAutoGroup(mac) {
+  async _removeMabAutoGroup(mac, autoGroup = null) {
     await hostTool.deleteWirelessDeviceTagCandidate(mac);
     const monitorable = await hostManager.getHostAsync(mac);
-    const autoGroup = await this._loadAutoGroup(mac, monitorable);
+    if (!autoGroup)
+      autoGroup = await this._loadAutoGroup(mac, monitorable);
     if (!autoGroup || autoGroup.auth !== "mab")
       return;
     if (!monitorable) {
